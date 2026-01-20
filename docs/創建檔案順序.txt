@@ -1,0 +1,125 @@
+這是一個非常務實的工程問題。面對這麼多檔案，如果沒有正確的開發順序，很容易寫到一半發現 A 檔案缺 B 檔案的參數，或者 C 檔案無法測試。
+
+建議採用 **「由下而上 (Bottom-Up)」** 加上 **「由內而外 (Inside-Out)」** 的策略。也就是先定義「物理定律」，再寫「組件」，最後寫「整合環境」。
+
+以下是針對您提供的專案架構，最順暢的 **5 階段開發順序**：
+
+---
+
+### 第一階段：地基與物理定律 (The Foundation)
+
+**目標**：確保所有「不可變」的參數和環境設定都就緒。
+
+1. **`requirements.txt`**
+* **動作**：建立虛擬環境，安裝 `gymnasium`, `numpy`, `stable-baselines3`, `pyyaml`, `pandas`, `matplotlib`。
+* **原因**：沒環境什麼都跑不動。
+
+
+2. **`src/utils/constants.py`** ⭐️ **(最重要的一步)**
+* **動作**：把 3GPP 規格 (100MHz, 273 RBs, 30kHz SCS, 0.5ms TTI) 和 MCS 表格 (CQI to Efficiency map) 全部寫進去。
+* **原因**：這是整個專案的「憲法」，所有核心程式都要 import 它。
+
+
+3. **`configs/default_config.yaml`**
+* **動作**：定義實驗變數（eMBB 到達率、URLLC 到達率、RL 學習率、模擬步數）。
+* **原因**：決定你要模擬的場景大小。
+
+
+
+---
+
+### 第二階段：核心組件 (The Physics Core)
+
+**目標**：實作 5G 物理層的個別零件，每個零件都要能獨立運作 (Unit Test)。
+
+4. **`src/core/channel.py`**
+* **動作**：實作 `get_efficiency(cqi)` 和簡單的 CQI 波動模型。
+* **測試**：寫一個小腳本，確認輸入 CQI=15 能回傳正確的頻譜效率。
+
+
+5. **`src/core/traffic.py`**
+* **動作**：實作 Poisson 到達過程。
+* **測試**：確認設定  後，跑 1000 次能產出符合期望值的數據量。
+
+
+6. **`src/core/buffers.py`**
+* **動作**：實作 FIFO 佇列，包含 `add_packet()`, `remove_packet()`, 和 `check_timeout()` (給 URLLC 用)。
+* **重點**：要能計算 HoL (Head-of-Line) Delay。
+
+
+
+---
+
+### 第三階段：基地台整合 (The System Model)
+
+**目標**：把上面的零件組裝成一台虛擬基地台。
+
+7. **`src/core/base_station.py`**
+* **動作**：
+* 在 `__init__` 裡實例化 Traffic, Channel, Buffers。
+* 實作資源映射邏輯：輸入 `action` (權重)  輸出 `allocated_rbs`  計算 `throughput`。
+
+
+* **關鍵**：這是模擬器的「引擎」。它不負責 RL，只負責「給定 RBs，計算傳了多少 bits」。
+* **測試**：手動呼叫它，給定 eMBB 50% 權重，看吐出來的 Throughput 是否合理。
+
+
+
+---
+
+### 第四階段：RL 環境介面 (The Gym Interface)
+
+**目標**：讓上面的基地台能跟強化學習演算法溝通。
+
+8. **`src/envs/slicing_env.py`**
+* **動作**：繼承 `gym.Env`。
+* `__init__`: 讀取 config，建立 `BaseStation`。
+* `step(action)`: 呼叫 BS 運算  算 Reward  回傳 State。
+* `reset()`: 重置所有 Buffer 和計數器。
+
+
+* **驗證**：使用 `gymnasium.utils.env_checker.check_env(env)` 來檢查介面是否符合標準。
+
+
+
+---
+
+### 第五階段：訓練與分析 (Train & Evaluate)
+
+**目標**：開始讓 AI 學習並驗收成果。
+
+9. **`main.py`**
+* **動作**：
+* 讀取 YAML config。
+* 建立 `NetworkSlicingEnv`。
+* 定義模型 (如 `SAC` 或 `PPO`)。
+* 執行 `model.learn()`。
+* `model.save()`。
+
+
+
+
+10. **`src/utils/plotter.py`** & **`evaluate.py`**
+* **動作**：
+* 載入訓練好的模型。
+* 跑 100 個 Episode。
+* 記錄每個 TTI 的 Buffer 長度、延遲、Throughput。
+* **畫圖**：畫出累積獎勵 (Reward) 曲線、CDF (累積分布函數) 圖來看 URLLC 延遲分佈。
+
+
+
+
+
+---
+
+### 🚀 快速檢查清單 (Checklist)
+
+| 順序 | 檔案 | 檢查重點 |
+| --- | --- | --- |
+| 1 | `constants.py` | 273 RBs, 30kHz SCS 寫對了嗎？ |
+| 2 | `channel.py` | MCS 表格對應正確嗎？ |
+| 3 | `base_station.py` | 物理層計算 (RBs * Efficiency) 邏輯通順嗎？ |
+| 4 | `slicing_env.py` | Step 函數能跑完 0.5ms 邏輯且不報錯嗎？ |
+| 5 | `main.py` | 模型能開始訓練並寫入 logs 嗎？ |
+
+建議您**今天先完成第一階段（1, 2, 3）**，把基礎參數定下來，後面的實作就會非常順利。
