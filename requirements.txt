@@ -3,4 +3,7 @@ numpy
 stable-baselines3
 pyyaml
 pandas
+tensorboard
 matplotlib
+tqdm
+rich
