@@ -64,8 +64,13 @@ env/
 .DS_Store
 
 # Project specific
+*.log
+logs/
+outputs/
+results/
 models/
 data/
 *.pkl
 *.pt
 *.pth
+*.zip
