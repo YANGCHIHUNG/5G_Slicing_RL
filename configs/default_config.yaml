@@ -25,7 +25,7 @@ traffic:
 
   # --- URLLC 切片 (低延遲需求) ---
   # 建議測試範圍：1 ~ 20 Mbps (URLLC 通常流量小但極度隨機)
-  urllc_arrival_rate_mbps: 5.0
+  urllc_arrival_rate_mbps: 15.0
 
 # ==========================================
 # 3. 強化學習代理人設定 (RL Agent - SAC)
@@ -59,11 +59,11 @@ reward:
   # 延遲懲罰權重 (Latency Penalty Weight)
   # 當 URLLC 封包延遲接近或超過 1ms 時的懲罰力度
   # 建議設大一點，因為 URLLC 失敗是嚴重錯誤
-  w_latency: 10.0
+  w_latency: 100.0
   
   # 違規懲罰 (Violation Penalty)
   # 如果 URLLC 封包真的超時 (Drop)，額外扣的分數
-  drop_penalty: 50.0
+  drop_penalty: 500.0
 
 # ==========================================
 # 5. 系統日誌 (Logging)
