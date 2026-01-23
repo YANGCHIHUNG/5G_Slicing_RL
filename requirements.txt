@@ -7,3 +7,9 @@ tensorboard
 matplotlib
 tqdm
 rich
+seaborn
+# Use PyPI as the primary index and add the PyTorch wheel index as an extra source
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch
+torchvision
+torchaudio 
