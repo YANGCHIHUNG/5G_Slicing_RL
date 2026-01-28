@@ -74,3 +74,12 @@ data/
 *.pt
 *.pth
 *.zip
+
+# Hyperparameter tuning artifacts
+optuna_logs/
+optuna_models/
+optuna_study.db
+optuna_*.html
+ray_results/
+best_config_*.yaml
+grid_search_results.yaml

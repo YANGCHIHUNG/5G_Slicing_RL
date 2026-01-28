@@ -13,3 +13,8 @@ seaborn
 torch
 torchvision
 torchaudio 
+
+# For hyperparameter tuning
+optuna
+optuna-dashboard
+plotly
