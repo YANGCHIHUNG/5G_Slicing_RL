@@ -3,6 +3,19 @@ main.py
 
 5G 網路切片強化學習訓練主程式 (Training Entry Point)。
 負責讀取設定、建立環境、初始化 SAC Agent，並執行訓練迴圈。
+
+使用方式：
+    # 單執行緒測試
+    python -m main
+
+    # 使用 nohup 在背景執行
+    nohup python -m main > main_202601291438.log 2>&1 &
+
+    # 查看背景執行狀態
+    ps aux | grep python | grep main
+
+    # 停止背景執行
+    pkill -f main
 """
 
 import os
@@ -14,7 +27,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import EvalCallback
 from src.envs.slicing_env import NetworkSlicingEnv
 
-def load_config(config_path="configs/default_config.yaml"):
+def load_config(config_path="configs/best_config_optuna.yaml"):
     """讀取 YAML 設定檔"""
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found at: {config_path}")

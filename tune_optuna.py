@@ -18,9 +18,19 @@ tune_optuna.py
     
     # 查看即時 Dashboard
     optuna-dashboard sqlite:///optuna_study.db
+
+    # 使用 nohup 在背景執行
+    nohup python tune_optuna.py --n-trials 20 --n-jobs 16 > tune_optuna_202601291438.log 2>&1 &
+
+    # 查看背景執行狀態
+    ps aux | grep tune_optuna.py
+
+    # 停止背景執行
+    pkill -f tune_optuna.py
 """
 
 import os
+import shutil
 import yaml
 import argparse
 import numpy as np
@@ -35,73 +45,98 @@ from stable_baselines3.common.callbacks import EvalCallback
 from src.envs.slicing_env import NetworkSlicingEnv
 
 
+import os
+import argparse
+import numpy as np
+import optuna
+from stable_baselines3 import SAC
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.callbacks import EvalCallback
+from src.envs.slicing_env import NetworkSlicingEnv
+
+def prepare_output_paths(args: argparse.Namespace):
+    """
+    確保輸出資料夾與檔案為乾淨狀態：
+    - 資料夾若已存在則刪除後重建
+    - 檔案若已存在則刪除
+    """
+
+    # 需要建立/重建的資料夾
+    output_dirs = [
+        args.optuna_log_dir,
+        args.optuna_model_dir,
+    ]
+
+    for dir_path in output_dirs:
+        if os.path.exists(dir_path):
+            if os.path.isdir(dir_path):
+                shutil.rmtree(dir_path)
+            else:
+                os.remove(dir_path)
+        os.makedirs(dir_path, exist_ok=True)
+
+    # 可能會產生的輸出檔案（先清除舊檔）
+    output_files = [
+        "optuna_history.html",
+        "optuna_importance.html",
+        "optuna_parallel_coordinate.html",
+        "optuna_slice.html",
+        "configs/best_config_optuna.yaml",
+    ]
+
+    for file_path in output_files:
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            os.remove(file_path)
+
+    # Optuna SQLite 資料庫若存在則刪除
+    if isinstance(args.storage, str) and args.storage.startswith("sqlite:///"):
+        db_path = args.storage.replace("sqlite:///", "", 1)
+        if db_path and os.path.exists(db_path) and os.path.isfile(db_path):
+            os.remove(db_path)
+
 def objective(trial: optuna.Trial, base_config: dict, args: argparse.Namespace):
     """
-    Optuna 目標函數：訓練一個 SAC Agent 並返回評估獎勵
-    
-    Args:
-        trial: Optuna Trial 物件
-        base_config: 基礎配置檔 (來自 default_config.yaml)
-        args: 命令列參數
-        
-    Returns:
-        float: 評估階段的平均獎勵 (mean_reward)
+    Optuna 目標函數：只調整模型超參數，環境與獎勵權重固定讀取自 base_config
     """
     
     # ==========================================
-    # 1. 定義搜索空間 (Search Space)
+    # 1. 定義搜索空間 (Search Space) - 僅包含 Agent 大腦結構
     # ==========================================
     
     # --- SAC 核心超參數 ---
-    learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True)
-    gamma = trial.suggest_float("gamma", 0.95, 0.9999)
-    tau = trial.suggest_float("tau", 0.001, 0.02, log=True)
-    ent_coef = trial.suggest_categorical("ent_coef", ["auto", "auto_0.1", "auto_0.01"])
-    batch_size = trial.suggest_categorical("batch_size", [64, 128, 256, 512])
-    buffer_size = trial.suggest_categorical("buffer_size", [10000, 30000, 50000, 100000])
+    # 稍微縮小 LR 範圍，避免過小導致不收斂
+    learning_rate = trial.suggest_float("learning_rate", 5e-5, 1e-3, log=True) 
+    # Gamma 鎖定在健康區間
+    gamma = trial.suggest_float("gamma", 0.90, 0.995) 
+    tau = trial.suggest_float("tau", 0.001, 0.05, log=True)
     
-    # --- 網路架構 ---
-    # 搜索神經網路層數與神經元數
-    n_layers = trial.suggest_int("n_layers", 2, 4)  # 2-4 層隱藏層
+    batch_size = trial.suggest_categorical("batch_size", [128, 256, 512])
+    # 增加 Buffer Size 選項，應對複雜環境
+    buffer_size = trial.suggest_categorical("buffer_size", [50000, 100000, 200000]) 
     
-    # 為每一層選擇神經元數（可以不同）
+    # Entropy Coefficient 處理
+    ent_coef_mode = trial.suggest_categorical("ent_coef_mode", ["auto", "fixed"])
+    if ent_coef_mode == "fixed":
+        ent_coef = trial.suggest_float("ent_coef_val", 0.001, 0.5, log=True)
+    else:
+        ent_coef = "auto"
+    
+    # --- 網路架構 (Neural Network Architecture) ---
+    n_layers = trial.suggest_int("n_layers", 2, 3)
+    
     if n_layers == 2:
-        neurons_layer1 = trial.suggest_categorical("neurons_layer1", [64, 128, 256, 512])
-        neurons_layer2 = trial.suggest_categorical("neurons_layer2", [64, 128, 256, 512])
+        neurons_layer1 = trial.suggest_categorical("neurons_layer1", [128, 256, 512])
+        neurons_layer2 = trial.suggest_categorical("neurons_layer2", [128, 256, 512])
         net_arch = [neurons_layer1, neurons_layer2]
     elif n_layers == 3:
-        neurons_layer1 = trial.suggest_categorical("neurons_layer1", [64, 128, 256, 512])
-        neurons_layer2 = trial.suggest_categorical("neurons_layer2", [64, 128, 256, 512])
-        neurons_layer3 = trial.suggest_categorical("neurons_layer3", [64, 128, 256, 512])
+        neurons_layer1 = trial.suggest_categorical("neurons_layer1", [128, 256, 512])
+        neurons_layer2 = trial.suggest_categorical("neurons_layer2", [128, 256, 512])
+        neurons_layer3 = trial.suggest_categorical("neurons_layer3", [128, 256, 512])
         net_arch = [neurons_layer1, neurons_layer2, neurons_layer3]
-    else:  # n_layers == 4
-        neurons_layer1 = trial.suggest_categorical("neurons_layer1", [64, 128, 256, 512])
-        neurons_layer2 = trial.suggest_categorical("neurons_layer2", [64, 128, 256, 512])
-        neurons_layer3 = trial.suggest_categorical("neurons_layer3", [64, 128, 256, 512])
-        neurons_layer4 = trial.suggest_categorical("neurons_layer4", [64, 128, 256, 512])
-        net_arch = [neurons_layer1, neurons_layer2, neurons_layer3, neurons_layer4]
     
-    # 建立 policy_kwargs
     policy_kwargs = dict(
-        net_arch=dict(
-            pi=net_arch,  # Actor 網路架構
-            qf=net_arch   # Critic 網路架構（Q-function）
-        )
+        net_arch=dict(pi=net_arch, qf=net_arch)
     )
-    
-    # --- 獎勵函數權重 ---
-    w_throughput = trial.suggest_float("w_throughput", 0.01, 2.0, log=True)
-    w_latency = trial.suggest_float("w_latency", 10.0, 300.0, log=True)
-    drop_penalty = trial.suggest_float("drop_penalty", 10.0, 500.0, log=True)
-    
-    # --- 流量負載場景 ---
-    embb_rate = trial.suggest_float("embb_arrival_rate_mbps", 50.0, 250.0)
-    urllc_rate = trial.suggest_float("urllc_arrival_rate_mbps", 2.0, 25.0)
-    
-    # --- 環境設定 ---
-    env_max_steps = trial.suggest_categorical("env_max_steps", [1000, 2000, 3000, 5000])
-    min_rbs_urllc = trial.suggest_int("min_rbs_urllc", 0, 40)
-    normalize_obs = trial.suggest_categorical("normalize_obs", [True, False])
     
     # ==========================================
     # 2. 建立 Trial 專屬配置
@@ -109,48 +144,25 @@ def objective(trial: optuna.Trial, base_config: dict, args: argparse.Namespace):
     
     config = base_config.copy()
     config['experiment_name'] = f"optuna_trial_{trial.number}"
-    config['random_seed'] = args.seed + trial.number  # 每個 trial 不同 seed
-    config['total_timesteps'] = args.timesteps  # 使用縮短的訓練步數加速搜索
-    config['eval_freq'] = max(2000, args.timesteps // 10)  # 至少評估 10 次
-    config['n_eval_episodes'] = 5  # 減少評估 episodes 加速
+    config['random_seed'] = args.seed + trial.number
     
-    # 更新搜索到的超參數
+    # 增加評估頻率與次數，減少隨機誤差
+    config['eval_freq'] = max(5000, config['total_timesteps'] // 10)
+    config['n_eval_episodes'] = 15 
+    
+    # --- 更新 Agent 超參數 ---
     config['agent']['learning_rate'] = learning_rate
     config['agent']['buffer_size'] = buffer_size
     config['agent']['batch_size'] = batch_size
     config['agent']['gamma'] = gamma
     config['agent']['tau'] = tau
-    
-    # 處理 ent_coef (Optuna 不支援直接 suggest "auto"，需轉換)
-    if ent_coef == "auto":
-        config['agent']['ent_coef'] = "auto"
-    elif ent_coef == "auto_0.1":
-        config['agent']['ent_coef'] = "auto_0.1"
-    elif ent_coef == "auto_0.01":
-        config['agent']['ent_coef'] = "auto_0.01"
-    else:
-        config['agent']['ent_coef'] = float(ent_coef)
-    
-    config['reward']['w_throughput'] = w_throughput
-    config['reward']['w_latency'] = w_latency
-    config['reward']['drop_penalty'] = drop_penalty
-    
-    config['traffic']['embb_arrival_rate_mbps'] = embb_rate
-    config['traffic']['urllc_arrival_rate_mbps'] = urllc_rate
-    
-    # 環境設定 (如果 base_config 沒有 'env' key，建立它)
-    if 'env' not in config:
-        config['env'] = {}
-    config['env']['env_max_steps'] = env_max_steps
-    config['env']['min_rbs_urllc'] = min_rbs_urllc
-    config['env']['normalize_obs'] = normalize_obs
+    config['agent']['ent_coef'] = ent_coef # 已經處理過 auto/float 邏輯
     
     # 路徑設定
     config['logging']['log_dir'] = os.path.join(args.optuna_log_dir, f"trial_{trial.number}")
     config['logging']['save_dir'] = os.path.join(args.optuna_model_dir, f"trial_{trial.number}")
-    config['logging']['verbose'] = 0  # 減少輸出
+    config['logging']['verbose'] = 0
     
-    # 建立目錄
     os.makedirs(config['logging']['log_dir'], exist_ok=True)
     os.makedirs(config['logging']['save_dir'], exist_ok=True)
     
@@ -160,18 +172,10 @@ def objective(trial: optuna.Trial, base_config: dict, args: argparse.Namespace):
     
     try:
         train_env = NetworkSlicingEnv(config)
-        train_env = Monitor(
-            train_env, 
-            filename=os.path.join(config['logging']['log_dir'], "train_monitor"),
-            allow_early_resets=True
-        )
+        train_env = Monitor(train_env, filename=os.path.join(config['logging']['log_dir'], "train_monitor"))
         
         eval_env = NetworkSlicingEnv(config)
-        eval_env = Monitor(
-            eval_env,
-            filename=os.path.join(config['logging']['log_dir'], "eval_monitor"),
-            allow_early_resets=True
-        )
+        eval_env = Monitor(eval_env, filename=os.path.join(config['logging']['log_dir'], "eval_monitor"))
         
     except Exception as e:
         print(f"Trial {trial.number} 環境建立失敗: {e}")
@@ -190,11 +194,10 @@ def objective(trial: optuna.Trial, base_config: dict, args: argparse.Namespace):
             batch_size=batch_size,
             gamma=gamma,
             tau=tau,
-            ent_coef=config['agent']['ent_coef'],
-            policy_kwargs=policy_kwargs,  # 使用自定義網路架構
+            ent_coef=ent_coef, # 直接使用處理後的變數
+            policy_kwargs=policy_kwargs,
             verbose=0,
             seed=config['random_seed'],
-            tensorboard_log=None  # 不使用 TensorBoard 節省空間
         )
     except Exception as e:
         print(f"Trial {trial.number} 模型建立失敗: {e}")
@@ -203,10 +206,9 @@ def objective(trial: optuna.Trial, base_config: dict, args: argparse.Namespace):
         raise optuna.TrialPruned()
     
     # ==========================================
-    # 5. 建立 Callbacks
+    # 5. 分段訓練 + 剪枝 (邏輯保持不變)
     # ==========================================
     
-    # 評估 Callback
     eval_callback = EvalCallback(
         eval_env,
         best_model_save_path=config['logging']['save_dir'],
@@ -218,17 +220,11 @@ def objective(trial: optuna.Trial, base_config: dict, args: argparse.Namespace):
         verbose=0
     )
     
-    # ==========================================
-    # 6. 分段訓練 + 手動剪枝
-    # ==========================================
-    
     try:
-        # 將訓練分成多個階段，每個階段後檢查是否要剪枝
         n_checkpoints = 5
         timesteps_per_checkpoint = config['total_timesteps'] // n_checkpoints
         
         for checkpoint in range(n_checkpoints):
-            # 訓練一段時間
             model.learn(
                 total_timesteps=timesteps_per_checkpoint,
                 callback=eval_callback,
@@ -236,69 +232,56 @@ def objective(trial: optuna.Trial, base_config: dict, args: argparse.Namespace):
                 progress_bar=False
             )
             
-            # 讀取當前評估結果
+            # 讀取評估結果
             eval_log_path = os.path.join(config['logging']['log_dir'], "evaluations.npz")
             if os.path.exists(eval_log_path):
                 evaluations = np.load(eval_log_path)
                 results = evaluations['results']
                 if len(results) > 0:
+                    # 取最後幾次的平均作為當前分數
                     current_mean_reward = float(results[-1].mean())
-                    
-                    # 回報給 Optuna
                     trial.report(current_mean_reward, checkpoint)
-                    
-                    # 檢查是否要剪枝
                     if trial.should_prune():
                         raise optuna.TrialPruned()
         
     except optuna.TrialPruned:
-        print(f"Trial {trial.number} 被剪枝 (Pruned) at checkpoint {checkpoint}/{n_checkpoints}")
+        print(f"Trial {trial.number} Pruned.")
         train_env.close()
         eval_env.close()
         raise
     except Exception as e:
-        print(f"Trial {trial.number} 訓練失敗: {e}")
+        print(f"Trial {trial.number} Failed: {e}")
         train_env.close()
         eval_env.close()
         raise optuna.TrialPruned()
     
     # ==========================================
-    # 7. 提取評估結果
+    # 6. 提取最終結果
     # ==========================================
     
-    # 從 evaluations.npz 讀取最終評估獎勵
     eval_log_path = os.path.join(config['logging']['log_dir'], "evaluations.npz")
-    
     if os.path.exists(eval_log_path):
-        try:
-            evaluations = np.load(eval_log_path)
-            # 取最後幾次評估的平均值 (更穩定)
-            results = evaluations['results']
-            if len(results) >= 3:
-                mean_reward = float(results[-3:].mean())  # 最後 3 次評估的平均
-            else:
-                mean_reward = float(results.mean())
-        except Exception as e:
-            print(f"Trial {trial.number} 讀取評估結果失敗: {e}")
-            mean_reward = -1e10  # 給予極差的分數
+        evaluations = np.load(eval_log_path)
+        results = evaluations['results']
+        # 取最後 5 次評估的平均，比較能代表最終收斂效果
+        if len(results) >= 5:
+            mean_reward = float(results[-5:].mean())
+        else:
+            mean_reward = float(results.mean())
     else:
-        print(f"Trial {trial.number} 沒有找到評估日誌")
         mean_reward = -1e10
-    
-    # ==========================================
-    # 8. 清理資源
-    # ==========================================
     
     train_env.close()
     eval_env.close()
     
-    # 記錄額外資訊到 Trial (供後續分析)
+    # 記錄關鍵配置 (僅供紀錄，方便日後查找用的是哪個流量場景)
     trial.set_user_attr("final_timesteps", config['total_timesteps'])
-    trial.set_user_attr("embb_rate", embb_rate)
-    trial.set_user_attr("urllc_rate", urllc_rate)
+    # 注意：這裡改為記錄 config 裡的值，因為局部變數已經刪除了
+    if 'traffic' in config:
+        trial.set_user_attr("embb_rate", config['traffic'].get('embb_arrival_rate_mbps', 'N/A'))
+        trial.set_user_attr("urllc_rate", config['traffic'].get('urllc_arrival_rate_mbps', 'N/A'))
     
     return mean_reward
-
 
 def main():
     # ==========================================
@@ -322,7 +305,7 @@ def main():
     parser.add_argument(
         "--timesteps", 
         type=int, 
-        default=50000, 
+        default=200000, 
         help="每個 trial 的訓練步數 (縮短以加速搜索，建議 30k-100k)"
     )
     parser.add_argument(
@@ -369,6 +352,12 @@ def main():
     )
     
     args = parser.parse_args()
+
+    # ==========================================
+    # 執行前清理與建立輸出資料夾/檔案
+    # ==========================================
+
+    prepare_output_paths(args)
     
     # ==========================================
     # 載入基礎配置
@@ -466,7 +455,10 @@ def main():
         final_config['agent']['batch_size'] = study.best_params['batch_size']
         final_config['agent']['gamma'] = study.best_params['gamma']
         final_config['agent']['tau'] = study.best_params['tau']
-        final_config['agent']['ent_coef'] = study.best_params['ent_coef']
+        if study.best_params['ent_coef_mode'] == 'auto':
+            final_config['agent']['ent_coef'] = 'auto'
+        else:
+            final_config['agent']['ent_coef'] = study.best_params['ent_coef_val']
         
         # 更新神經網路架構
         n_layers = study.best_params['n_layers']
@@ -483,22 +475,6 @@ def main():
             'pi': net_arch,  # Actor 網路
             'qf': net_arch   # Critic 網路
         }
-        
-        # 更新 Reward 權重
-        final_config['reward']['w_throughput'] = study.best_params['w_throughput']
-        final_config['reward']['w_latency'] = study.best_params['w_latency']
-        final_config['reward']['drop_penalty'] = study.best_params['drop_penalty']
-        
-        # 更新流量場景
-        final_config['traffic']['embb_arrival_rate_mbps'] = study.best_params['embb_arrival_rate_mbps']
-        final_config['traffic']['urllc_arrival_rate_mbps'] = study.best_params['urllc_arrival_rate_mbps']
-        
-        # 更新環境設定
-        if 'env' not in final_config:
-            final_config['env'] = {}
-        final_config['env']['env_max_steps'] = study.best_params['env_max_steps']
-        final_config['env']['min_rbs_urllc'] = study.best_params['min_rbs_urllc']
-        final_config['env']['normalize_obs'] = study.best_params['normalize_obs']
         
         # 儲存到 YAML
         with open(best_config_path, 'w', encoding='utf-8') as f:
