@@ -1,0 +1,80 @@
+## nohup 使用教學文件
+
+### 什麼是 nohup？
+nohup（no hang up）是用來讓指令忽略「掛斷訊號」（SIGHUP），SSH 斷線或登出後，程式仍繼續在背景執行。
+
+### 基本語法
+```
+nohup [指令] [參數] > 日誌檔.log 2>&1 &
+```
+- `nohup`：忽略 SIGHUP 訊號。
+- `> 日誌檔.log`：標準輸出（stdout）寫到指定檔案，預設是 `nohup.out`。
+- `2>&1`：錯誤輸出（stderr）也重導到同一個檔案。
+- `&`：放到背景執行，回傳 PID。
+
+### 步驟一：執行指令
+1. 直接執行：
+   ```
+   nohup sleep 100 > test.log 2>&1 &
+   ```
+   - 執行後會顯示類似 `12345`，12345 就是 PID。
+
+2. 進階版（記錄 PID 到檔案，方便之後 kill）：
+   ```
+   nohup python your_script.py --arg1 value1 > run_$(date +%Y%m%d_%H%M%S).log 2>&1 & echo $! > run.pid
+   ```
+   - `$(date +%Y%m%d_%H%M%S)`：檔名加時間戳，避免覆蓋。
+   - `echo $! > run.pid`：存 PID 到 run.pid。
+3. 跑 bash 腳本：
+   ```
+   nohup bash your_script.sh > script.log 2>&1 &
+   ```
+
+### 步驟二：檢查狀態
+```
+ps aux | grep your_script.py
+```
+或
+```
+tail -f run.log  # 即時看 log
+```
+- 確認程式還在跑、看進度。
+
+### 步驟三：停止程式
+1. 找 PID：
+   ```
+   cat run.pid  # 如果有存 PID
+   # 或 ps aux | grep your_script
+   ```
+
+2. 殺掉：
+   ```
+   kill PID     # 先試優雅終止
+   kill -9 PID  # 強制殺（若無效）
+   ```
+   或精準殺：
+   ```
+   pkill -f "your_script.py"
+   ```
+- 記得檢查 log 最後狀態。
+
+### 常見範例（適合你 RL/Python 訓練）
+```
+nohup python tune_optuna.py --n-trials 100 --timesteps 50000 --n-jobs 8 \
+  > optuna_$(date +%Y%m%d_%H%M%S).log 2>&1 & echo $! > optuna.pid
+```
+- 斷線後重新 SSH，程式繼續跑，看 `tail -f *.log`。
+
+### 注意事項
+- nohup 只忽略 SIGHUP，不處理其他錯誤（如 OOM）。
+- 輸出預設寫當前目錄，空間夠用。
+- SSH 遠端跑腳本時，記得加重導向，否則命令不馬上回來。
+- 想降低優先權（長任務不卡系統）：
+  ```
+  nohup nice -n 10 your_command > log 2>&1 &
+  ```
+- 裝滿 disk 或權限問題會失敗，檢查 log。
+
+### 缺點與替代
+- 無法互動（純背景），適合非互動任務。
+- 替代：tmux/screen（可 detach/re-attach）。
