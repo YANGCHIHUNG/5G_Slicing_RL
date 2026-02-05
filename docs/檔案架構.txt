@@ -22,3 +22,41 @@
 ├── main.py                  # 【主程式】訓練入口
 ├── evaluate.py              # 測試與驗證入口
 └── requirements.txt         # 套件清單 (gymnasium, numpy, pandas...)
+
+
+0205 檔案樹
+.
+├── configs
+│   ├── best_config_optuna.yaml
+│   └── default_config.yaml
+├── docs
+│   ├── CQI觀念釐清.txt
+│   ├── MODULE_ARCHITECTURE.txt
+│   ├── nohup使用文件.txt
+│   ├── PSEUDOCODE.md
+│   ├── 創建檔案順序.txt
+│   └── 檔案架構.txt
+├── evaluate.py
+├── logs
+├── main_202602042244.log
+├── main.py
+├── models
+├── requirements.txt
+├── results
+├── src
+│   ├── core
+│   │   ├── base_station.py
+│   │   ├── buffers.py
+│   │   ├── channel.py
+│   │   ├── __init__.py
+│   │   └── traffic.py
+│   ├── envs
+│   │   ├── __init__.py
+│   │   └── slicing_env.py
+│   ├── __init__.py
+│   │   └── __init__.cpython-310.pyc
+│   └── utils
+│       ├── constants.py
+│       ├── __init__.py
+│       └── plotter.py
+└── tune_optuna.py
