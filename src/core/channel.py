@@ -35,7 +35,7 @@ class ChannelSimulator:
     使用限制隨機漫步 (Bounded Random Walk) 來模擬 CQI 的動態變化。
     """
     
-    def __init__(self, num_ues: int, seed: int = None):
+    def __init__(self, num_ues: int, seed: int = None, fixed_cqi: bool = False, fixed_cqi_values=None):
         """
         初始化通道模擬器。
         
@@ -47,10 +47,19 @@ class ChannelSimulator:
             np.random.seed(seed)
             
         self.num_ues = num_ues
-        
-        # 初始化所有用戶的 CQI
-        # 預設讓用戶分佈在收訊較好的區間 (7~15)，避免一開始就斷線
-        self.current_cqis = np.random.randint(7, C.MAX_CQI + 1, size=num_ues)
+        self.fixed_cqi = fixed_cqi
+
+        if self.fixed_cqi:
+            if fixed_cqi_values is None:
+                fixed_cqi_values = [10] * num_ues
+            fixed_arr = np.array(fixed_cqi_values, dtype=int)
+            if fixed_arr.size == 1:
+                fixed_arr = np.full(num_ues, int(fixed_arr.item()))
+            self.current_cqis = np.clip(fixed_arr, 1, C.MAX_CQI)
+        else:
+            # 初始化所有用戶的 CQI
+            # 預設讓用戶分佈在收訊較好的區間 (7~15)，避免一開始就斷線
+            self.current_cqis = np.random.randint(7, C.MAX_CQI + 1, size=num_ues)
         
         # 定義 CQI 變化的轉移機率 (Transition Probabilities)
         # 模擬慢衰落 (Slow Fading)：大部分時間 CQI 保持不變
@@ -64,6 +73,9 @@ class ChannelSimulator:
         Returns:
             np.ndarray: 更新後的 CQI 陣列
         """
+        if self.fixed_cqi:
+            return self.current_cqis
+
         # 為每個 UE 生成一個隨機動作：-1 (變差), 0 (不變), +1 (變好)
         # 邏輯：先決定「是否改變」，再決定「變好還是變壞」
         

@@ -30,7 +30,13 @@ class BaseStation:
         
         # --- 1. 初始化通道模擬器 (Channel Physics) ---
         # 假設有 2 個邏輯用戶群組：0=eMBB用戶群, 1=URLLC用戶群
-        self.channel = ChannelSimulator(num_ues=2, seed=config['random_seed'])
+        channel_cfg = config.get('channel', {})
+        self.channel = ChannelSimulator(
+            num_ues=2,
+            seed=config['random_seed'],
+            fixed_cqi=channel_cfg.get('fixed_cqi', False),
+            fixed_cqi_values=channel_cfg.get('fixed_cqi_values', None)
+        )
         
         # --- 2. 初始化流量生成器 (Traffic Source) ---
         # 讀取 Config 中的 Mbps 設定
@@ -83,12 +89,19 @@ class BaseStation:
         eff_urllc = efficiencies[1]
         
         # 2. 產生新流量 (Arrival)
-        _, bits_in_embb = self.traffic_embb.step()
-        _, bits_in_urllc = self.traffic_urllc.step()
+        # 修正：使用 num_packets 而非總 bits，將每個封包獨立加入 Buffer
+        num_pkts_embb, _ = self.traffic_embb.step()
+        num_pkts_urllc, _ = self.traffic_urllc.step()
         
-        # 加入 Buffer
-        self.buffer_embb.add_packet(bits_in_embb, self.current_time)
-        self.buffer_urllc.add_packet(bits_in_urllc, self.current_time)
+        # 加入 Buffer (eMBB) - 逐個封包加入
+        packet_size_embb_bits = C.PACKET_SIZE_EMBB_BYTES * 8
+        for _ in range(num_pkts_embb):
+            self.buffer_embb.add_packet(packet_size_embb_bits, self.current_time)
+        
+        # 加入 Buffer (URLLC) - 逐個封包加入
+        packet_size_urllc_bits = C.PACKET_SIZE_URLLC_BYTES * 8
+        for _ in range(num_pkts_urllc):
+            self.buffer_urllc.add_packet(packet_size_urllc_bits, self.current_time)
         
         
         # --- B. 資源分配 (Resource Mapping) ---
@@ -171,7 +184,13 @@ class BaseStation:
         self.buffer_embb.reset()
         self.buffer_urllc.reset()
         # 通道可以不重置，或重新隨機
-        self.channel = ChannelSimulator(num_ues=2, seed=self.config['random_seed'])
+        channel_cfg = self.config.get('channel', {})
+        self.channel = ChannelSimulator(
+            num_ues=2,
+            seed=self.config['random_seed'],
+            fixed_cqi=channel_cfg.get('fixed_cqi', False),
+            fixed_cqi_values=channel_cfg.get('fixed_cqi_values', None)
+        )
 
 
 # ==========================================

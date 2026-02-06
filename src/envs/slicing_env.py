@@ -61,6 +61,10 @@ class NetworkSlicingEnv(gym.Env):
         self.w_throughput = config['reward']['w_throughput']
         self.w_latency = config['reward']['w_latency']
         self.drop_penalty = config['reward']['drop_penalty']
+
+        # 5. 約束參數 (可選)
+        constraints = config.get('constraints', {})
+        self.min_urllc_weight = float(constraints.get('min_urllc_weight', 0.0))
         
         # 狀態追蹤
         self.current_step = 0
@@ -92,9 +96,25 @@ class NetworkSlicingEnv(gym.Env):
         Returns:
             obs, reward, terminated, truncated, info
         """
-        # 1. 呼叫基地台引擎執行物理計算
+        # 1. 動作前處理：歸一化 + 最小 URLLC 配額約束 (避免資源全給 eMBB)
+        action_raw = np.array(action, dtype=np.float32)
+        action_clipped = np.clip(action_raw, 0.0, 1.0)
+        total_w = float(np.sum(action_clipped))
+        if total_w <= 0.0:
+            action_norm = np.array([0.5, 0.5], dtype=np.float32)
+        else:
+            action_norm = action_clipped / total_w
+
+        if self.min_urllc_weight > 0.0:
+            w_urllc = max(action_norm[1], self.min_urllc_weight)
+            w_embb = 1.0 - w_urllc
+            action_applied = np.array([w_embb, w_urllc], dtype=np.float32)
+        else:
+            action_applied = action_norm
+
+        # 2. 呼叫基地台引擎執行物理計算
         # 引擎會回傳這個 TTI 發生了什麼事 (Throughput, Latency, Drops...)
-        info = self.bs.step(action)
+        info = self.bs.step(action_applied)
         
         # 2. 獲取新狀態 (Next State)
         obs = self.bs.get_observation()
@@ -122,6 +142,9 @@ class NetworkSlicingEnv(gym.Env):
         info['reward_throughput'] = reward_throughput
         info['reward_latency'] = reward_latency
         info['reward_drop'] = reward_drop
+        info['action_raw'] = action_raw
+        info['action_applied'] = action_applied
+        info['min_urllc_weight'] = self.min_urllc_weight
         
         # 4. 檢查終止條件
         self.current_step += 1
