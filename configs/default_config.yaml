@@ -28,6 +28,13 @@ traffic:
   urllc_arrival_rate_mbps: 15.0
 
 # ==========================================
+# 2.1 通道設定 (Channel)
+# ==========================================
+channel:
+  fixed_cqi: false            # true=固定CQI, false=隨機變動
+  fixed_cqi_values: [10, 10]  # [eMBB, URLLC] 固定值；可填單一值
+
+# ==========================================
 # 3. 強化學習代理人設定 (RL Agent - SAC)
 # ==========================================
 # 建議使用 Soft Actor-Critic (SAC) 因為它是針對連續動作空間 (Continuous Action)
@@ -45,6 +52,9 @@ agent:
   
   # SAC 特有參數
   ent_coef: "auto"          # 熵係數 (Entropy Coefficient)，auto 代表自動調整探索程度
+
+  # 多環境並行 (Vectorized Environments)
+  num_envs: 16               # 使用的環境數量 (對應 CPU 核心數)
 
 # ==========================================
 # 4. 環境與獎勵權重 (Environment & Rewards)
@@ -66,7 +76,15 @@ reward:
   drop_penalty: 0.05
 
 # ==========================================
-# 5. 系統日誌 (Logging)
+# 5. 資源分配約束 (Optional Constraints)
+# ==========================================
+constraints:
+  # 最小 URLLC 權重（避免策略把資源全部給 eMBB）
+  # 0.1 代表至少 10% RBs 給 URLLC
+  min_urllc_weight: 0.10
+
+# ==========================================
+# 6. 系統日誌 (Logging)
 # ==========================================
 logging:
   log_dir: "./logs/"        # TensorBoard Log 儲存位置
