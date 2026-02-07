@@ -174,6 +174,12 @@ class BaseStation:
         state_embb = self.buffer_embb.get_state(self.current_time)
         state_urllc = self.buffer_urllc.get_state(self.current_time)
         cqis = self.channel.get_ue_cqis()
+
+        # Normalize: Load -> Mb, Delay -> 100ms units
+        state_embb[0] = state_embb[0] / 1e6
+        state_urllc[0] = state_urllc[0] / 1e6
+        state_embb[1] = state_embb[1] / 0.1
+        state_urllc[1] = state_urllc[1] / 0.1
         
         # Flatten list
         return np.array(state_embb + state_urllc + list(cqis), dtype=np.float32)
