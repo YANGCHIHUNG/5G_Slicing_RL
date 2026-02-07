@@ -63,8 +63,8 @@ def plot_evaluation_results(df: pd.DataFrame, save_dir: str):
     # ==========================================
     plt.figure(figsize=(8, 6))
     
-    # 過濾掉沒有傳輸 (延遲為0) 的數據
-    valid_latencies = df[df['latency_urllc'] > 0]['latency_urllc'] * 1000 # 轉為 ms
+    # 過濾掉沒有傳輸 (Throughput > 0) 的數據，保留延遲為 0 的有效數據
+    valid_latencies = df[df['throughput_urllc_mbps'] > 0]['latency_urllc'] * 1000 # 轉為 ms
     
     if len(valid_latencies) > 0:
         sns.ecdfplot(data=valid_latencies, label='RL Agent')
