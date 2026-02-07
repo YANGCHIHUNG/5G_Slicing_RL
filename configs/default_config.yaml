@@ -64,7 +64,7 @@ agent:
 reward:
   # 吞吐量權重 (Throughput Weight)
   # 將 Mbps 轉換為 Reward 的比例。例如設為 0.1，則 100Mbps = +10 Reward
-  w_throughput: 0.00001
+  w_throughput: 0.001
   
   # 延遲懲罰權重 (Latency Penalty Weight)
   # 當 URLLC 封包延遲接近或超過 1ms 時的懲罰力度
