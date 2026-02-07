@@ -20,10 +20,10 @@ from src.utils.plotter import plot_evaluation_results
 # ==========================================
 # 請將此路徑改為您實際訓練出來的實驗資料夾名稱
 # 例如: "logs/sac_slicing_baseline_v1_20260121-120000"
-EXPERIMENT_DIR = "logs/sac_slicing_baseline_v1_20260122-231933" 
+EXPERIMENT_DIR = "logs/sac_slicing_baseline_v1_20260206-154124" 
 
 # 參數設定
-CONFIG_PATH = "configs/default_config.yaml"
+CONFIG_PATH = "configs/best_config_optuna.yaml"
 MODEL_FILENAME = "best_model.zip" # 優先讀取最佳模型
 # MODEL_FILENAME = "final_model.zip" # 若沒有 best_model 則讀這個
 
