@@ -68,7 +68,7 @@ class NetworkSlicingEnv(gym.Env):
         
         # 狀態追蹤
         self.current_step = 0
-        self.max_steps = config['total_timesteps']
+        self.max_steps = 2000
 
     def reset(self, seed=None, options=None):
         """
