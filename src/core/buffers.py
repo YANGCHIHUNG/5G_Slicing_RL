@@ -45,6 +45,10 @@ class SliceBuffer:
         Returns:
             bool: 是否成功加入 (若 Buffer 滿了則回傳 False)
         """
+        if len(self.queue) > 200000:
+            self.dropped_packets += 1
+            return False
+
         if len(self.queue) >= self.max_size:
             # Buffer Overflow (溢位丟包)
             self.dropped_packets += 1
