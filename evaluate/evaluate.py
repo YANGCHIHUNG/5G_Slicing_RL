@@ -20,7 +20,7 @@ from src.utils.plotter import plot_evaluation_results
 # ==========================================
 # 請將此路徑改為您實際訓練出來的實驗資料夾名稱
 # 例如: "logs/sac_slicing_baseline_v1_20260121-120000"
-EXPERIMENT_DIR = "logs/sac_slicing_baseline_v1_20260206-154124" 
+EXPERIMENT_DIR = "logs/distilled_sac_student_v1_20260207-172248" 
 
 # 參數設定
 CONFIG_PATH = "configs/best_config_optuna.yaml"

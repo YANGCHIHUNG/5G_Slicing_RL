@@ -74,6 +74,7 @@ data/
 *.pt
 *.pth
 *.zip
+nohuplog
 
 # Hyperparameter tuning artifacts
 optuna_logs/

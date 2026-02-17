@@ -1,92 +1,36 @@
-# configs/default_config.yaml
-# 5G Network Slicing Simulation Configuration
-# 用於控制實驗場景、流量負載與強化學習超參數
-
-# ==========================================
-# 1. 實驗基礎設定 (Simulation Basics)
-# ==========================================
-experiment_name: "sac_slicing_baseline_v1"
-random_seed: 42             # 固定種子以確保實驗結果可重現 (Reproducibility)
-total_timesteps: 200000     # 訓練總步數 (TTIs)，100k 約等於模擬 50秒 (100k * 0.5ms)
-eval_freq: 2000             # 每隔多少步進行一次驗證 (Evaluation)
-n_eval_episodes: 10         # 每次驗證跑幾個 Episode
-
-# ==========================================
-# 2. 流量負載設定 (Traffic Load Scenario)
-# ==========================================
-# 這裡定義應用層的平均到達率 (Average Arrival Rate)
-# 程式碼會根據 Packet Size (定義在 constants.py) 自動轉換為 Poisson Lambda
-
-traffic:
-  # --- eMBB 切片 (高頻寬需求) ---
-  # 建議測試範圍：50 ~ 400 Mbps (取決於您的 100MHz 頻寬極限)
-  # 註：100MHz 頻寬理論峰值約 400-600 Mbps (視 CQI 分佈而定)
-  embb_arrival_rate_mbps: 300.0  
-
-  # --- URLLC 切片 (低延遲需求) ---
-  # 建議測試範圍：1 ~ 20 Mbps (URLLC 通常流量小但極度隨機)
-  urllc_arrival_rate_mbps: 15.0
-
-# ==========================================
-# 2.1 通道設定 (Channel)
-# ==========================================
-channel:
-  fixed_cqi: false            # true=固定CQI, false=隨機變動
-  fixed_cqi_values: [10, 10]  # [eMBB, URLLC] 固定值；可填單一值
-
-# ==========================================
-# 3. 強化學習代理人設定 (RL Agent - SAC)
-# ==========================================
-# 建議使用 Soft Actor-Critic (SAC) 因為它是針對連續動作空間 (Continuous Action)
-# 且樣本效率 (Sample Efficiency) 比 PPO 好
-
 agent:
-  algorithm: "SAC"          # 使用的演算法 (支援 SAC, PPO, TD3)
-  
-  # --- 超參數 (Hyperparameters) ---
-  learning_rate: 0.0003     # 學習率 (3e-4 是標準起始值)
-  buffer_size: 50000        # Replay Buffer 大小
-  batch_size: 256           # 每次更新拿多少筆資料
-  gamma: 0.99               # 折扣因子 (Discount Factor)，重視長期回報
-  tau: 0.005                # Target Network 的軟更新係數
-  
-  # SAC 特有參數
-  ent_coef: "auto"          # 熵係數 (Entropy Coefficient)，auto 代表自動調整探索程度
-
-  # 多環境並行 (Vectorized Environments)
-  num_envs: 16               # 使用的環境數量 (對應 CPU 核心數)
-
-# ==========================================
-# 4. 環境與獎勵權重 (Environment & Rewards)
-# ==========================================
-# 用於微調 Reward Function: R = w_thr * Throughput - w_lat * Latency_Penalty
-
-reward:
-  # 吞吐量權重 (Throughput Weight)
-  # 將 Mbps 轉換為 Reward 的比例。例如設為 0.1，則 100Mbps = +10 Reward
-  w_throughput: 0.001
-  
-  # 延遲懲罰權重 (Latency Penalty Weight)
-  # 當 URLLC 封包延遲接近或超過 1ms 時的懲罰力度
-  # 建議設大一點，因為 URLLC 失敗是嚴重錯誤
-  w_latency: 0.01
-  
-  # 違規懲罰 (Violation Penalty)
-  # 如果 URLLC 封包真的超時 (Drop)，額外扣的分數
-  drop_penalty: 0.05
-
-# ==========================================
-# 5. 資源分配約束 (Optional Constraints)
-# ==========================================
-constraints:
-  # 最小 URLLC 權重（避免策略把資源全部給 eMBB）
-  # 0.1 代表至少 10% RBs 給 URLLC
-  min_urllc_weight: 0.10
-
-# ==========================================
-# 6. 系統日誌 (Logging)
-# ==========================================
+  algorithm: SAC
+  batch_size: 128
+  buffer_size: 200000
+  ent_coef: auto
+  gamma: 0.9542946974785835
+  learning_rate: 0.0001780128079294231
+  policy_kwargs:
+    net_arch:
+      pi: &id001 [64, 64]
+      qf: *id001
+  tau: 0.027798987860390412
+  num_envs: 16
+eval_freq: 2000
+experiment_name: small_model_sac_slicing_baseline_v1
 logging:
-  log_dir: "./logs/"        # TensorBoard Log 儲存位置
-  save_dir: "./models/"     # 訓練模型儲存位置
-  verbose: 1                # 輸出詳細程度 (0:無, 1:資訊, 2:除錯)
+  log_dir: ./logs
+  save_dir: ./logs
+  verbose: 0
+n_eval_episodes: 10
+random_seed: 42
+reward:
+  drop_penalty: 0.05
+  w_latency: 0.01
+  w_throughput: 1.0e-03
+total_timesteps: 1000000
+traffic:
+  embb_arrival_rate_mbps: 400.0
+  urllc_arrival_rate_mbps: 40.0
+
+channel:
+  fixed_cqi: false
+  fixed_cqi_values: [10, 10]
+
+constraints:
+  min_urllc_weight: 0.05

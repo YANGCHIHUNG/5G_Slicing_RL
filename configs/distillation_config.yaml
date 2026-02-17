@@ -1,0 +1,87 @@
+# configs/distillation_config.yaml
+
+# ==========================================
+# 1. 實驗基礎設定
+# ==========================================
+# 修改實驗名稱，以便在 TensorBoard 中與老師模型區分
+experiment_name: "distilled_sac_student_v1"
+
+# 固定種子以確保結果可重現
+random_seed: 42
+
+# 訓練總步數
+# 學生模型因為有老師指導，通常收斂較快，但為了比較性能，建議保持與老師相同或略少
+total_timesteps: 100000
+
+# 評估頻率
+eval_freq: 2000
+n_eval_episodes: 10
+
+# ==========================================
+# 2. 環境一致性設定 (CRITICAL)
+# ==========================================
+# 注意：為了讓老師的知識有效，學生必須處在「完全相同」的環境中。
+# 因此，Traffic, Channel, Reward, Constraints 必須與 default_config.yaml 完全一致。
+
+traffic:
+  # eMBB 流量 (300 Mbps)
+  embb_arrival_rate_mbps: 300.0
+  # URLLC 流量 (15 Mbps)
+  urllc_arrival_rate_mbps: 15.0
+
+channel:
+  fixed_cqi: false
+  fixed_cqi_values: [10, 10]
+
+reward:
+  w_throughput: 0.00001
+  w_latency: 0.01
+  drop_penalty: 0.05
+
+constraints:
+  min_urllc_weight: 0.10
+
+# ==========================================
+# 3. 學生 Agent 設定 (核心修改區)
+# ==========================================
+agent:
+  # 標記算法名稱 (僅供識別)
+  algorithm: "DistilledSAC"
+  
+  # --- [A] 知識蒸餾參數 ---
+  # 指定老師模型的路徑。請確保此路徑下有 .zip 檔案 (由 main.py 訓練產生)
+  teacher_path: "logs/(Light Load)sac_slicing_baseline_v1_20260206-154124/best_model.zip"
+  
+  # 蒸餾權重 (Alpha)
+  # 範圍 0.0 ~ 1.0
+  # 0.5 代表 Loss = 0.5 * SAC_Loss + 0.5 * Distillation_Loss
+  # 數值越大，學生越傾向於「死記硬背」老師的動作；數值越小，學生越依賴自我探索
+  distillation_alpha: 0.5
+  
+  # --- [B] 輕量化網路架構 (學生模型) ---
+  # 這是知識蒸餾的主要目的：用小模型達到大模型的效能
+  # 老師模型 (default) 通常是 [256, 256] 或更大
+  # 學生模型我們縮減為 [64, 64]
+  policy_kwargs:
+    net_arch: [64, 64]
+
+  # --- [C] 其他 SAC 超參數 ---
+  # 這些參數可以沿用，或針對小模型微調 (通常 Learning Rate 可以稍微調大一點點，但在這裡我們先保持一致)
+  learning_rate: 0.0003
+  buffer_size: 50000
+  batch_size: 256
+  gamma: 0.99
+  tau: 0.005
+  # 熵係數自動調整
+  ent_coef: "auto"
+  
+  # 多環境並行
+  num_envs: 1
+
+# ==========================================
+# 4. 系統日誌
+# ==========================================
+logging:
+  log_dir: "./logs/"
+  save_dir: "./models/"
+  verbose: 1

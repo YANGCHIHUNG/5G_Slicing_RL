@@ -9,7 +9,7 @@ main.py
     python -m main
 
     # 使用 nohup 在背景執行
-    nohup python -m main > main_202602051621.log 2>&1 &
+    nohup python -m main > main_202602102145.log 2>&1 &
 
     # 查看背景執行狀態
     ps aux | grep python | grep main
@@ -29,7 +29,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback, CallbackList
 from src.envs.slicing_env import NetworkSlicingEnv
 
-def load_config(config_path="configs/best_config_optuna.yaml"):
+def load_config(config_path="configs/default_config.yaml"):
     """讀取 YAML 設定檔"""
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found at: {config_path}")

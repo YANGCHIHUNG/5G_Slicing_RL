@@ -20,7 +20,7 @@ tune_optuna.py
     optuna-dashboard sqlite:///optuna_study.db
 
     # 使用 nohup 在背景執行
-    nohup python tune_optuna.py --n-trials 20 --n-jobs 16 > tune_optuna_202601291438.log 2>&1 &
+    nohup python tune_optuna.py --n-trials 50 --n-jobs 16 > tune_optuna_202602101730.log 2>&1 &
 
     # 查看背景執行狀態
     ps aux | grep tune_optuna.py
@@ -29,21 +29,11 @@ tune_optuna.py
     pkill -f tune_optuna.py
 """
 
-import os
+import copy
 import shutil
 import yaml
-import argparse
-import numpy as np
-import optuna
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
-
-from stable_baselines3 import SAC
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import EvalCallback
-
-from src.envs.slicing_env import NetworkSlicingEnv
-
 
 import os
 import argparse
@@ -142,7 +132,7 @@ def objective(trial: optuna.Trial, base_config: dict, args: argparse.Namespace):
     # 2. 建立 Trial 專屬配置
     # ==========================================
     
-    config = base_config.copy()
+    config = copy.deepcopy(base_config)
     config['experiment_name'] = f"optuna_trial_{trial.number}"
     config['random_seed'] = args.seed + trial.number
     
@@ -303,12 +293,6 @@ def main():
         help="平行工作數 (建議設為 CPU 核心數，如 4 或 8)"
     )
     parser.add_argument(
-        "--timesteps", 
-        type=int, 
-        default=200000, 
-        help="每個 trial 的訓練步數 (縮短以加速搜索，建議 30k-100k)"
-    )
-    parser.add_argument(
         "--study-name", 
         type=str, 
         default="5g_slicing_sac_v1", 
@@ -367,7 +351,6 @@ def main():
     print(f"基礎配置: {args.config}")
     print(f"總試驗次數: {args.n_trials}")
     print(f"平行工作數: {args.n_jobs}")
-    print(f"每個 Trial 訓練步數: {args.timesteps}")
     print(f"Study 名稱: {args.study_name}")
     print(f"資料庫: {args.storage}\n")
     
